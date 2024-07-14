@@ -13,3 +13,7 @@ pip install -r https://raw.githubusercontent.com/teddylee777/langchain-kr/main/r
 ## LangChine(LangSmith)
 https://docs.smith.langchain.com/
 https://smith.langchain.com/
+
+## reference
+https://wikidocs.net/book/14314
+https://www.youtube.com/watch?v=1scMJH93v0M&t=71s
