@@ -12,5 +12,4 @@ pip install -r https://raw.githubusercontent.com/teddylee777/langchain-kr/main/r
 
 ## LangChine(LangSmith)
 https://docs.smith.langchain.com/
-
-
+https://smith.langchain.com/
