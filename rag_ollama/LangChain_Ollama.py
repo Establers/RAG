@@ -36,18 +36,47 @@ text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50
 split_documents = text_splitter.split_documents(docs)
 print(f"분할된 청크의수: {len(split_documents)}")
 
-# 단계 3: 임베딩(Embedding) 생성
-# embeddings = OpenAIEmbeddings()
+# # 단계 3: 임베딩(Embedding) 생성
+# # embeddings = OpenAIEmbeddings()
 
-# 허깅 페이스 로컬 임베딩 사용
-from langchain_community.embeddings import HuggingFaceHubEmbeddings
-embeddings = HuggingFaceHubEmbeddings()
-text = (
-    "임베딩 테스트를 하기 위한 샘플 문장입니다."  # 테스트용 문서 텍스트를 정의합니다.
-)
-query_result = embeddings.embed_query(text)
-len(query_result)
-query_result[:3]
+# # 허깅 페이스 로컬 임베딩 사용
+# from langchain_community.embeddings import HuggingFaceHubEmbeddings
+# embeddings = HuggingFaceHubEmbeddings()
+# text = (
+#     "임베딩 테스트를 하기 위한 샘플 문장입니다."  # 테스트용 문서 텍스트를 정의합니다.
+# )
+# query_result = embeddings.embed_query(text)
+# len(query_result)
+# query_result[:3]
+
+###
+# from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings # pip install -U langchain-huggingface
+# Path to your local model
+local_model_path = "c:/RAG/rag_ollama/multilingual-e5-large-instruct"
+# Instantiate the HuggingFaceEmbeddings class
+embeddings = HuggingFaceEmbeddings(model_name=local_model_path)
+
+# text = (
+#     "임베딩 테스트를 하기 위한 샘플 문장입니다."  # 테스트용 문서 텍스트를 정의합니다.
+# )
+# query_result = embeddings.embed_query(text)
+
+# print(len(query_result))
+# print(query_result[:3])
+
+# 단계 4: DB 생성(Create DB) 및 저장
+# 벡터스토어를 생성합니다.
+vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddings)
+
+# 단계 5: 검색기(Retriever) 생성
+# 문서에 포함되어 있는 정보를 검색하고 생성합니다.
+retriever = vectorstore.as_retriever()
+
+# # 검색기에 쿼리를 날려 검색된 chunk 결과를 확인합니다.
+retriever.invoke("SCI 통신 레지스터에 대해서 간단하게 알려줘")
+
+###
 
 # 단계 4: DB 생성(Create DB) 및 저장
 # 벡터스토어를 생성합니다.
