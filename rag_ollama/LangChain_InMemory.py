@@ -4,13 +4,14 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_teddynote.messages import stream_response
-
+from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_community.vectorstores import FAISS
 from langchain_core.output_parsers import StrOutputParser
-from langchain_core.chat_history import BaseChatMessageHistory
+# from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_community.chat_message_histories import ChatMessageHistory
+
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_core.runnables import Runnable
 from operator import itemgetter
@@ -67,7 +68,7 @@ llm = ChatOllama(
 )
 
 store = {}  # 세션 기록을 저장할 딕셔너리
-def get_session_history(user_id: str, conversation_id: str):
+def get_session_history(user_id: str, conversation_id: str) -> BaseChatMessageHistory :
     print("user_id: ", user_id, "conversation_id: ", conversation_id)
     if (user_id, conversation_id) not in store:
         store[(user_id, conversation_id)] = ChatMessageHistory()
@@ -152,7 +153,7 @@ with_message_history = RunnableWithMessageHistory (  # RunnableWithMessageHistor
 
 print(first_step.invoke({"question": "hello", "history": "boom"}))
 result = with_message_history.invoke(
-    {"question" : "AI안전보안이사회에 대해서 알려줘"},
+    {"context": retriever, "question" : "AI안전보안이사회에 대해서 알려줘"},
     config = {"configurable" : {"user_id" : "test2", "conversation_id" : "2"}}
 )
 
