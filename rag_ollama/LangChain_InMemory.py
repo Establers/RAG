@@ -60,7 +60,7 @@ vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddin
 # 단계 5: 검색기(Retriever) 생성
 # 문서에 포함되어 있는 정보를 검색하고 생성합니다.
 retriever = vectorstore.as_retriever()
-retriever.invoke("AI안전보안이사회에 대해서 알려줘")
+retriever.invoke("ai")
 
 llm = ChatOllama(
     model="EEVE-Korean-10.8B-Q5:latest",
@@ -68,7 +68,7 @@ llm = ChatOllama(
 )
 
 store = {}  # 세션 기록을 저장할 딕셔너리
-def get_session_history(user_id: str, conversation_id: str) -> BaseChatMessageHistory :
+def get_session_history(user_id: str, conversation_id: str) :
     print("user_id: ", user_id, "conversation_id: ", conversation_id)
     if (user_id, conversation_id) not in store:
         store[(user_id, conversation_id)] = ChatMessageHistory()
@@ -119,16 +119,20 @@ chat_prompt = ChatPromptTemplate.from_messages(
 
 context = itemgetter("question") | retriever
 first_step = RunnablePassthrough.assign(context=context)
-
-runnable: Runnable = itemgetter("question") | retriever | chat_prompt | llm | StrOutputParser()
-
-
+print(first_step.invoke({"question": "hello", "history": "boom"}))
+runnable = (
+    {
+        "context" : itemgetter("question") | retriever,
+        "question" : itemgetter("question"),
+    }
+    | chat_prompt | llm | StrOutputParser()
+)
 
 # 세션 ID를 기반으로 세션 기록을 가져오는 함수
 
 with_message_history = RunnableWithMessageHistory (  # RunnableWithMessageHistory 객체 생성
     runnable,  # 실행할 Runnable 객체
-    get_session_history,  # 세션 기록을 가져오는 함수
+    get_session_history=get_session_history,  # 세션 기록을 가져오는 함수
     input_messages_key="question",  # 입력 메시지의 키
     history_messages_key="history",  # 기록 메시지의 키
     history_factory_config=[
@@ -150,10 +154,15 @@ with_message_history = RunnableWithMessageHistory (  # RunnableWithMessageHistor
         ),
     ],
 )
+print(runnable.invoke({"question": "hello", "history": []}))
 
-print(first_step.invoke({"question": "hello", "history": "boom"}))
+# print(context.invoke({"question":"안녕"}))
+# print(first_step.invoke({"question": "hello", "history": "boom"}))
 result = with_message_history.invoke(
-    {"context": retriever, "question" : "AI안전보안이사회에 대해서 알려줘"},
+    {
+        "question" : "AI안전보안이사회에 대해서 알려줘"
+        
+    },
     config = {"configurable" : {"user_id" : "test2", "conversation_id" : "2"}}
 )
 
