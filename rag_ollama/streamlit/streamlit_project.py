@@ -16,22 +16,30 @@ from langchain_core.prompts import PromptTemplate
 from langchain_community.chat_message_histories import ChatMessageHistory
 from operator import itemgetter
 from langchain_core.runnables.history import RunnableWithMessageHistory
-
-
+import pymupdf4llm
+from langchain_text_splitters import MarkdownTextSplitter
+import os
 st.title("Hello World")
 
 def get_retriever(): 
     # 단계 1: 문서 로드(Load Documents)
-    # loader = PyMuPDFLoader("../docs/SPRi_AI_Brief_6월호_산업동향_최종.pdf")
-    loader = PyMuPDFLoader("../../docs/SPRi_AI_Brief_6월호_산업동향_최종.pdf")
+    
+    # loader = PyMuPDFLoader("../../docs/SPRi_AI_Brief_6월호_산업동향_최종.pdf")
+    loader = PyMuPDFLoader("../../docs/REN_r01uh0495ej0100_rx634_MAH_20150225.pdf")
     docs = loader.load()
     print(f"문서의 페이지수: {len(docs)}")
-
     # 단계 2: 문서 분할(Split Documents)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
     split_documents = text_splitter.split_documents(docs)
     print(f"분할된 청크의수: {len(split_documents)}")
-
+    
+    
+    # md_docs = pymupdf4llm.to_markdown("../../docs/REN_r01uh0495ej0100_rx634_MAH_20150225.pdf")
+    # md_docs = pymupdf4llm.to_markdown("../../docs/SPRi_AI_Brief_6월호_산업동향_최종.pdf")
+    # print("-- MD_DOCS --", md_docs[1:10])    
+    # splitter = MarkdownTextSplitter(chunk_size=500, chunk_overlap=20)
+    # split_documents = splitter.create_documents([md_docs])
+    
     # from langchain_community.embeddings import HuggingFaceEmbeddings
     
     # Path to your local model
@@ -41,18 +49,33 @@ def get_retriever():
 
     # 단계 4: DB 생성(Create DB) 및 저장
     # 벡터스토어를 생성합니다.
-    vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddings)
-
+    vectorstore_index = "rx634_datasheet_vectorstore"
+    if not os.path.exists(vectorstore_index) :    
+        vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddings)
+        vectorstore.save_local(vectorstore_index)
+    else :
+        vectorstore = FAISS.load_local(vectorstore_index, embeddings,
+                                allow_dangerous_deserialization=True)
+        
+    print("end of vectorstore...")
+    
     # 단계 5: 검색기(Retriever) 생성
     # 문서에 포함되어 있는 정보를 검색하고 생성합니다.
     retriever = vectorstore.as_retriever()
-    
+    print("end of retriever...")
     return retriever
 
 def get_llm():
+    # llm = ChatOllama(
+    #     model="EEVE-Korean-10.8B-Q5:latest",
+    #     temperature=0.0,
+    #     num_gpu=1,
+    # )
+    
     llm = ChatOllama(
-        model="EEVE-Korean-10.8B-Q5:latest",
-        temperature=0.0
+        model="llama3.1:8b",
+        temperature=0.1,
+        num_gpu=1,
     )
     return llm
 
@@ -143,6 +166,7 @@ def create_rag_with_history():
 user_input = st.chat_input("Say something")
 if user_input: 
     add_message("user", user_input)
+    print_messages()
     rag_with_history = create_rag_with_history()
     result1 = rag_with_history.invoke(
         # 질문 입력
@@ -151,5 +175,4 @@ if user_input:
         config={"configurable": {"session_id": "rag123"}},
     )
     add_message("assistant ", result1)
-    
-print_messages()
+print_messages()    
