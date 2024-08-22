@@ -37,7 +37,7 @@ logging_langsmith.langsmith("LangChain_Datasheet")
 def get_retriever(): 
     # 단계 1: 문서 로드(Load Documents)
     logging.debug("Load Documents")
-    loader = PyMuPDFLoader("../docs/REN_r01uh0495ej0100_rx634_MAH_20150225.pdf")
+    loader = PyMuPDFLoader("h:/RAG/docs/REN_r01uh0495ej0100_rx634_MAH_20150225.pdf")
     # loader = PyMuPDFLoader("../docs/SPRi_AI_Brief_6월호_산업동향_최종.pdf")
     docs = loader.load()
     logging.debug(f"문서의 페이지수: {len(docs)}")
@@ -54,12 +54,13 @@ def get_retriever():
     # 단계 4: DB 생성(Create DB) 및 저장
     # 벡터스토어를 생성합니다.
     vectorstore_index = "rx634_datasheet_vectorstore_ver2"
+    logging.debug(os.path)
     if not os.path.exists(vectorstore_index) :
-        logging.debug("exist vectorstore")
+        logging.debug("not exist vectorstore")
         vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddings)
         vectorstore.save_local(vectorstore_index)
     else :
-        logging.debug("no vectorstore")
+        logging.debug("exist vectorstore")
         vectorstore = FAISS.load_local(vectorstore_index, embeddings,
                                 allow_dangerous_deserialization=True)
     logging.debug("vector store end")

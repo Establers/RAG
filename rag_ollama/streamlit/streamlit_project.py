@@ -18,14 +18,16 @@ from operator import itemgetter
 from langchain_core.runnables.history import RunnableWithMessageHistory
 import pymupdf4llm
 from langchain_text_splitters import MarkdownTextSplitter
+from langchain_teddynote.prompts import load_prompt
+from langchain import hub
 import os
 st.title("Hello World")
 
 def get_retriever(): 
     # 단계 1: 문서 로드(Load Documents)
     
-    # loader = PyMuPDFLoader("../../docs/SPRi_AI_Brief_6월호_산업동향_최종.pdf")
-    loader = PyMuPDFLoader("../../docs/REN_r01uh0495ej0100_rx634_MAH_20150225.pdf")
+    loader = PyMuPDFLoader("../../docs/SPRi_AI_Brief_6월호_산업동향_최종.pdf")
+    # loader = PyMuPDFLoader("../../docs/REN_r01uh0495ej0100_rx634_MAH_20150225.pdf")
     docs = loader.load()
     print(f"문서의 페이지수: {len(docs)}")
     # 단계 2: 문서 분할(Split Documents)
@@ -79,7 +81,8 @@ def get_llm():
     )
     return llm
 
-def get_promptTemplate():
+def get_promptTemplate(prompt_option):
+    # 기본 템플릿
     prompt = PromptTemplate.from_template(
         """
             You are an assistant for question-answering tasks. 
@@ -98,6 +101,13 @@ def get_promptTemplate():
         """
     )
     
+    if prompt_option == "SNS 게시글" :
+        prompt = load_prompt("prompts/sns.yaml", encoding="utf-8")
+        
+    elif prompt_option == "요약" :
+        prompt = load_prompt("prompts/summary.yaml", encoding="utf-8")
+        
+    print(prompt)
     return prompt
 
 def get_session_history(session_ids):
@@ -109,7 +119,7 @@ def get_session_history(session_ids):
 
 
 def create_chain():
-    prompt = get_promptTemplate()
+    prompt = get_promptTemplate(prompt_option_box)
     llm = get_llm()
     retriever = get_retriever()
     chain = (
@@ -138,7 +148,17 @@ if "RAG_WITH_HISTORY" not in st.session_state:
 if "store" not in st.session_state:
     st.session_state["store"] = {}
 
-    
+## side bar
+with st.sidebar:
+    clear_btn = st.button("대화 초기화")
+
+    ### select box
+    prompt_option_box = st.selectbox(
+        "Select prompt Template...",
+        ("기본", "SNS 게시글", "요약"), index = 0
+    )
+
+# -------------- #
 # 새로운 메시지 추가
 def add_message(role, message):
     st.session_state["messages"].append(
@@ -151,6 +171,7 @@ def print_messages():
         st.chat_message(chat_message.role).write(chat_message.content)
         print()
         
+
 # 처음 한번만 수행되게
 
 def create_rag_with_history():
@@ -163,16 +184,43 @@ def create_rag_with_history():
     )
     return rag_with_history
 
+if clear_btn : 
+    # ALL CLEAR!
+    st.session_state["message"] = []
+    st.session_state["store"] = {}
+    st.session_state["RAG_WITH_HISTORY"] = []
+
+print_messages() # 이전 대화 출력
+
 user_input = st.chat_input("Say something")
 if user_input: 
-    add_message("user", user_input)
+    st.chat_message("user").write(user_input)
     print_messages()
     rag_with_history = create_rag_with_history()
-    result1 = rag_with_history.invoke(
+    # ai_answer= rag_with_history.invoke(
+    #     # 질문 입력
+    #     {"question": user_input},
+    #     # 세션 ID 기준으로 대화를 기록합니다.
+    #     config={"configurable": {"session_id": "rag123"}},
+    # )
+    
+    response = rag_with_history.stream(
         # 질문 입력
         {"question": user_input},
         # 세션 ID 기준으로 대화를 기록합니다.
         config={"configurable": {"session_id": "rag123"}},
     )
-    add_message("assistant ", result1)
-print_messages()    
+    
+    with st.chat_message("assistant") :
+        # 빈 컨테이너를 만들어서, 여기에 토큰을 스트리밍 출력 
+        container = st.empty()
+        
+        ai_answer = ""
+        for token in response :
+            ai_answer += token
+            container.markdown(ai_answer)
+        
+    # st.chat_message("assistant").write(ai_answer)
+    add_message("user", user_input)
+    add_message("assistant", ai_answer)
+ 
