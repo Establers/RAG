@@ -1,0 +1,17 @@
+FROM Llama-3.1-Korean-8B-Instruct.Q8_0.gguf
+
+TEMPLATE """{{- if .System }}
+<s>{{ .System }}</s>
+{{- end }}
+<s>Human:
+{{ .Prompt }}</s>
+<s>Assistant:
+"""
+
+SYSTEM """A conversation between a curious user and an artificial intelligence assistant. The assistant provides helpful, concise, but polite answers to your questions. Always answer in Korean."""
+
+PARAMETER temperature 0
+PARAMETER num_predict 3000
+PARAMETER num_ctx 4096
+PARAMETER stop "<s>"
+PARAMETER stop "</s>"
