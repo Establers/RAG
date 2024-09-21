@@ -195,6 +195,9 @@ rag_ollama/EEVE-Korean-Instruct-10.8B-v1.0-Q5_K_M.gguf
 
 rag_ollama/Llama-3-Open-Ko/Llama-3-Open-Ko-8B-Q8_0.gguf
 rag_ollama/EEVE-Korean-Instruct-10.8B-v1.0-Q8_0.gguf
+rag_ollama/QuantFactory_Llama-3.1-Korean-8B-Instruct-GGUF/Llama-3.1-Korean-8B-Instruct.Q8_0.gguf
 *.faiss
 *.pkl
 .DS_Store
+
+rag_ollama/streamlit/cache/*

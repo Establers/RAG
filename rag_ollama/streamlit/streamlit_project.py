@@ -20,8 +20,10 @@ import pymupdf4llm
 from langchain_text_splitters import MarkdownTextSplitter
 from langchain_teddynote.prompts import load_prompt
 from langchain import hub
+from langchain_huggingface import HuggingFacePipeline  # for huggingface local model
 import os
 st.title("Hello World")
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def get_retriever(): 
     # 단계 1: 문서 로드(Load Documents)
@@ -44,14 +46,26 @@ def get_retriever():
     
     # from langchain_community.embeddings import HuggingFaceEmbeddings
     
+    # 단계 3: 임베딩 생성(Create Embeddings)s
     # Path to your local model
-    local_model_path = "h:/RAG/rag_ollama/embedding_model/multilingual-e5-large-instruct"
+    local_model_path = "../embedding_model/multilingual-e5-large-instruct"
     # Instantiate the HuggingFaceEmbeddings class
-    embeddings = HuggingFaceEmbeddings(model_name=local_model_path)
-
+    # embeddings = HuggingFaceEmbeddings(
+    #     model_name=local_model_path,
+    #     model_kwargs={"device":"mps"}
+    # )
+    
+    # 허깅 페이스에서 다운로드 받아서 임베딩 진행
+    embedding_model_name = "intfloat/multilingual-e5-large-instruct"
+    embeddings = HuggingFaceEmbeddings(
+        model_name=embedding_model_name,
+        model_kwargs={"device":"mps"},
+        encode_kwargs={"normalize_embeddings":True},
+    )
+    
     # 단계 4: DB 생성(Create DB) 및 저장
     # 벡터스토어를 생성합니다.
-    vectorstore_index = "rx634_datasheet_vectorstore"
+    vectorstore_index = "vectorstore_index"
     if not os.path.exists(vectorstore_index) :    
         vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddings)
         vectorstore.save_local(vectorstore_index)
@@ -74,14 +88,30 @@ def get_llm():
     #     num_gpu=1,
     # )
     
+    # llm = ChatOllama(
+    #     model="llama3.1:8b",
+    #     temperature=0.1,
+    # )
+    
+    
+    # llm = HuggingFacePipeline.from_model_id(
+    #     model_id="sh2orc/Llama-3.1-Korean-8B-Instruct",
+    #     task="text-generation",
+    #     pipeline_kwargs={
+    #         "max_new_tokens": 256,
+    #         "top_k": 35,
+    #         "temperature": 0.1,
+    #     }
+    # )
+    
     llm = ChatOllama(
-        model="llama3.1:8b",
+        model="llama3.1-Korean-8B-Q8",
         temperature=0.1,
-        num_gpu=1,
     )
+    
     return llm
 
-def get_promptTemplate(prompt_option):
+def get_promptTemplate(prompt_option_path, task=""):
     # 기본 템플릿
     prompt = PromptTemplate.from_template(
         """
@@ -101,12 +131,10 @@ def get_promptTemplate(prompt_option):
         """
     )
     
-    if prompt_option == "SNS 게시글" :
-        prompt = load_prompt("prompts/sns.yaml", encoding="utf-8")
-        
-    elif prompt_option == "요약" :
-        prompt = load_prompt("prompts/summary.yaml", encoding="utf-8")
-        
+    prompt = load_prompt(prompt_option_path, encoding="utf-8")
+    if task : 
+        prompt = prompt.partial(task=task)
+    
     print(prompt)
     return prompt
 
@@ -119,9 +147,10 @@ def get_session_history(session_ids):
 
 
 def create_chain():
-    prompt = get_promptTemplate(prompt_option_box)
+    prompt = get_promptTemplate(prompt_option_box, task_input)
     llm = get_llm()
     retriever = get_retriever()
+    
     chain = (
         {
             "context": itemgetter("question") | retriever,
@@ -152,11 +181,14 @@ if "store" not in st.session_state:
 with st.sidebar:
     clear_btn = st.button("대화 초기화")
 
+    import glob
+    prompt_files = glob.glob("prompts/*.yaml")
     ### select box
     prompt_option_box = st.selectbox(
-        "Select prompt Template...",
-        ("기본", "SNS 게시글", "요약"), index = 0
+        "프롬프트 옵션 선택",
+        prompt_files, index = 0
     )
+    task_input = st.text_input("Task 입력", "")
 
 # -------------- #
 # 새로운 메시지 추가
@@ -169,7 +201,6 @@ def add_message(role, message):
 def print_messages():
     for chat_message in st.session_state["messages"]:
         st.chat_message(chat_message.role).write(chat_message.content)
-        print()
         
 
 # 처음 한번만 수행되게
@@ -195,7 +226,6 @@ print_messages() # 이전 대화 출력
 user_input = st.chat_input("Say something")
 if user_input: 
     st.chat_message("user").write(user_input)
-    print_messages()
     rag_with_history = create_rag_with_history()
     # ai_answer= rag_with_history.invoke(
     #     # 질문 입력

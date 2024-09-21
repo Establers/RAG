@@ -23,6 +23,7 @@ EEVE-Korean-10.8B:latest        4d957747ec33    7.7 GB  5 seconds ago
 
 ### HuggingFace Open Embedding model Download
 ```
+MAC : `brew install git-lfs`
 git lfs clone https://huggingface.co/intfloat/multilingual-e5-large-instruct
 ```
 
