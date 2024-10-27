@@ -22,7 +22,7 @@ from langchain_teddynote.prompts import load_prompt
 from langchain import hub
 from langchain_huggingface import HuggingFacePipeline  # for huggingface local model
 import os
-st.title("Hello World")
+st.title("PDF 문서 QA Chatbot with RAG & Ollama")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def get_retriever(): 
@@ -105,7 +105,8 @@ def get_llm():
     # )
     
     llm = ChatOllama(
-        model="llama3.1-Korean-8B-Q8",
+        # model="llama3.1-Korean-8B-Q8",
+        model="llama-3.2-Korean-Bllossom-3B.Q8",
         temperature=0.1,
     )
     
@@ -253,4 +254,4 @@ if user_input:
     # st.chat_message("assistant").write(ai_answer)
     add_message("user", user_input)
     add_message("assistant", ai_answer)
- 
+
