@@ -21,8 +21,9 @@ from langchain_text_splitters import MarkdownTextSplitter
 from langchain_teddynote.prompts import load_prompt
 from langchain import hub
 from langchain_huggingface import HuggingFacePipeline  # for huggingface local model
+import glob
 import os
-st.title("PDF 문서 QA Chatbot with RAG & Ollama")
+st.title("PDF 문서 QA")
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 def get_retriever(): 
@@ -77,6 +78,44 @@ def get_retriever():
     
     # 단계 5: 검색기(Retriever) 생성
     # 문서에 포함되어 있는 정보를 검색하고 생성합니다.
+    retriever = vectorstore.as_retriever()
+    print("end of retriever...")
+    return retriever
+
+def get_retriever_for_file_upload(upload_file_path=None): 
+    # 단계 1: 문서 로드(Load Documents)
+    loader = PyMuPDFLoader(upload_file_path)
+    docs = loader.load()
+    print(f"문서의 페이지수: {len(docs)}")
+    
+    # 단계 2: 문서 분할(Split Documents)
+    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
+    split_documents = text_splitter.split_documents(docs)
+    print(f"분할된 청크의수: {len(split_documents)}")
+    
+    local_model_path = "../embedding_model/multilingual-e5-large-instruct"
+
+    # 허깅 페이스에서 다운로드 받아서 임베딩 진행
+    embedding_model_name = "intfloat/multilingual-e5-large-instruct"
+    embeddings = HuggingFaceEmbeddings(
+        model_name=embedding_model_name,
+        model_kwargs={"device":"mps"},
+        encode_kwargs={"normalize_embeddings":True},
+    )
+    
+    # 단계 4: DB 생성(Create DB) 및 저장
+    # 벡터스토어를 생성합니다.
+    vectorstore_index = os.path.basename(upload_file_path).replace(".pdf", "_vectorstore_index").replace(" ", "_")
+    if not os.path.exists(vectorstore_index) :    
+        vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddings)
+        vectorstore.save_local(vectorstore_index)
+    else :
+        vectorstore = FAISS.load_local(vectorstore_index, embeddings,
+                                allow_dangerous_deserialization=True)
+        
+    print("end of vectorstore...")
+    
+    # 단계 5: 검색기(Retriever) 생성
     retriever = vectorstore.as_retriever()
     print("end of retriever...")
     return retriever
@@ -147,10 +186,9 @@ def get_session_history(session_ids):
     return st.session_state["store"][session_ids]  # 해당 세션 ID에 대한 세션 기록 반환
 
 
-def create_chain():
+def create_chain(retriever):
     prompt = get_promptTemplate(prompt_option_box, task_input)
     llm = get_llm()
-    retriever = get_retriever()
     
     chain = (
         {
@@ -163,6 +201,16 @@ def create_chain():
         | StrOutputParser()
     )
     return chain
+
+def create_rag_with_history(retriever):
+    chain = create_chain(retriever)
+    rag_with_history = RunnableWithMessageHistory(
+        chain,
+        get_session_history,  # 세션 기록을 가져오는 함수
+        input_messages_key="question",  # 사용자의 질문이 템플릿 변수에 들어갈 key
+        history_messages_key="chat_history",  # 기록 메시지의 키
+    )
+    return rag_with_history
 
 # -- LOAD .env --#
 load_dotenv()
@@ -178,19 +226,61 @@ if "RAG_WITH_HISTORY" not in st.session_state:
 if "store" not in st.session_state:
     st.session_state["store"] = {}
 
+if "chain" not in st.session_state:
+    st.session_state["chain"] = None
+
+# 캐시 디렉토리 생성
+# 파일 업로드 때문에
+if not os.path.exists("./cache"):
+    os.makedirs("./cache")
+
+if not os.path.exists("./cache/files"):
+    os.makedirs("./cache/files")
+    
+if not os.path.exists("./cache/embeddings"):
+    os.makedirs("./cache/embeddings")
+
 ## side bar
 with st.sidebar:
     clear_btn = st.button("대화 초기화")
+    
+    ## 파일 업로드 기능 start
+    uploaded_file = st.file_uploader("파일 업로드", type=["pdf"])
+    ## 파일 업로드 기능 end
+    
+    ## 프롬프트 옵션 선택 start
 
-    import glob
     prompt_files = glob.glob("prompts/*.yaml")
     ### select box
     prompt_option_box = st.selectbox(
         "프롬프트 옵션 선택",
         prompt_files, index = 0
     )
+    ## 프롬프트 옵션 선택 end
     task_input = st.text_input("Task 입력", "")
 
+# 파일이 업로드 되었을 때
+# 파일을 캐시 저장(시간이 오래걸리는 작업을 처리할 예정)
+@st.cache_resource(show_spinner="file uploading...") # 파일이 업로드가 되면 데코레이터로 캐싱을 해줌, 파일 관련할 때 cache_resource를 많이 사용
+def embed_file(file):
+    # 업로드한 파일을 캐시 디렉토리에 저장함.
+    file_content = file.read()
+    file_path = f"./cache/files/{file.name}"
+    with open(file_path, "wb") as f:
+        f.write(file_content)
+        
+    # 문서를 임베딩하기 위한 객체 생성
+    retriever = get_retriever_for_file_upload(file_path)
+    return retriever
+    
+    
+# 파일을 업로드 하고 처리하는 것
+if uploaded_file:
+    # 파일 업로드 후 retriever 객체 생성
+    retriever = embed_file(uploaded_file)
+    chain = create_rag_with_history(retriever)
+    st.session_state["chain"] = chain
+    
 # -------------- #
 # 새로운 메시지 추가
 def add_message(role, message):
@@ -206,52 +296,44 @@ def print_messages():
 
 # 처음 한번만 수행되게
 
-def create_rag_with_history():
-    chain = create_chain()
-    rag_with_history = RunnableWithMessageHistory(
-        chain,
-        get_session_history,  # 세션 기록을 가져오는 함수
-        input_messages_key="question",  # 사용자의 질문이 템플릿 변수에 들어갈 key
-        history_messages_key="chat_history",  # 기록 메시지의 키
-    )
-    return rag_with_history
-
 if clear_btn : 
     # ALL CLEAR!
     st.session_state["message"] = []
     st.session_state["store"] = {}
     st.session_state["RAG_WITH_HISTORY"] = []
+    st.session_state["chain"] = None
 
 print_messages() # 이전 대화 출력
 
-user_input = st.chat_input("Say something")
-if user_input: 
-    st.chat_message("user").write(user_input)
-    rag_with_history = create_rag_with_history()
-    # ai_answer= rag_with_history.invoke(
-    #     # 질문 입력
-    #     {"question": user_input},
-    #     # 세션 ID 기준으로 대화를 기록합니다.
-    #     config={"configurable": {"session_id": "rag123"}},
-    # )
-    
-    response = rag_with_history.stream(
-        # 질문 입력
-        {"question": user_input},
-        # 세션 ID 기준으로 대화를 기록합니다.
-        config={"configurable": {"session_id": "rag123"}},
-    )
-    
-    with st.chat_message("assistant") :
-        # 빈 컨테이너를 만들어서, 여기에 토큰을 스트리밍 출력 
-        container = st.empty()
-        
-        ai_answer = ""
-        for token in response :
-            ai_answer += token
-            container.markdown(ai_answer)
-        
-    # st.chat_message("assistant").write(ai_answer)
-    add_message("user", user_input)
-    add_message("assistant", ai_answer)
+user_input = st.chat_input("Ask me something")
 
+# 경고 메시지를 띄우기 위한 영역
+warn_msg = st.empty()
+
+if user_input: 
+    chain = st.session_state["chain"]
+    if chain is not None :
+        st.chat_message("user").write(user_input)
+        response = chain.stream(
+            # 질문 입력
+            {"question": user_input},
+            # 세션 ID 기준으로 대화를 기록합니다.
+            config={"configurable": {"session_id": "rag123"}},
+        )
+        
+        with st.chat_message("assistant") :
+            # 빈 컨테이너를 만들어서, 여기에 토큰을 스트리밍 출력 
+            container = st.empty()
+            
+            ai_answer = ""
+            for token in response :
+                ai_answer += token
+                container.markdown(ai_answer)
+            
+        # st.chat_message("assistant").write(ai_answer)
+        add_message("user", user_input)
+        add_message("assistant", ai_answer)
+    else :
+        warn_msg.warning("파일을 업로드 해주세요.")
+        
+        
