@@ -28,6 +28,10 @@ from langchain.retrievers import BM25Retriever, EnsembleRetriever
 # CHROMA
 from langchain_chroma import Chroma
 
+# Kiwi
+# pip install -qU kiwipiepy konlpy langchain-teddynote
+from langchain_teddynote.retrievers import KiwiBM25Retriever
+
 import glob
 import os
 st.title("PDF 문서 QA")
@@ -39,6 +43,14 @@ def get_retriever():
     loader = PyMuPDFLoader("../../docs/SPRi_AI_Brief_6월호_산업동향_최종.pdf")
     # loader = PyMuPDFLoader("../../docs/REN_r01uh0495ej0100_rx634_MAH_20150225.pdf")
     docs = loader.load()
+    
+    # 메타데이터 중에서 'page'만 남기기
+    for doc in docs:
+        if 'page' in doc.metadata:
+            doc.metadata = {'page': doc.metadata['page']}
+        else:
+            doc.metadata = {}  # 'page' 정보가 없을 경우 빈 메타데이터
+            
     print(f"문서의 페이지수: {len(docs)}")
     # 단계 2: 문서 분할(Split Documents)
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
@@ -165,10 +177,21 @@ def get_retriever_for_file_upload(upload_file_path=None):
     bm25_retriever = BM25Retriever.from_documents(documents=split_documents)
     bm25_retriever.k = 5
     
+    # KiwiBM25Retriever
+    # kiwi_bm25_retriever = KiwiBM25Retriever.from_documents(documents=split_documents)
+    # kiwi_bm25_retriever.k = 5
+
+    # if st.session_state["selBM25Retriever"] == "BM25Retriever" :
+    #     retriever = bm25_retriever
+    # elif st.session_state["selBM25Retriever"] == "KiwiBM25Retriever" :
+    #     retriever = kiwi_bm25_retriever
+    # else :
+    #     retriever = bm25_retriever # default
+    
     # faissRetriever
     faiss_retriever = vectorstore.as_retriever(
         search_type = "mmr",    # 검색 방법 (mmr, bm25)
-        search_kwargs={"k": 10, "lambda_mult": 0.5, "fetch_k": 20}, 
+        search_kwargs={"k": st.session_state["bm25_k"], "lambda_mult": 0.5, "fetch_k": 20}, 
     )
     
     # EnsembleRetriever
@@ -288,6 +311,14 @@ if "store" not in st.session_state:
 if "chain" not in st.session_state:
     st.session_state["chain"] = None
 
+if "selBM25Retriever" not in st.session_state:
+    st.session_state["selBM25Retriever"] = 0
+    # BM25Retriever 어떤 것을 선택할지
+
+if "bm25_k" not in st.session_state:
+    st.session_state["bm25_k"] = 5
+    # BM25Retriever의 K값
+    
 # 캐시 디렉토리 생성
 # 파일 업로드 때문에
 if not os.path.exists("./cache"):
@@ -301,14 +332,13 @@ if not os.path.exists("./cache/embeddings"):
 
 ## side bar
 with st.sidebar:
-    clear_btn = st.button("대화 초기화")
+    clear_btn = st.button("대화만 초기화")
     
     ## 파일 업로드 기능 start
     uploaded_file = st.file_uploader("파일 업로드", type=["pdf"])
     ## 파일 업로드 기능 end
     
     ## 프롬프트 옵션 선택 start
-
     prompt_files = glob.glob("prompts/*.yaml")
     ### select box
     prompt_option_box = st.selectbox(
@@ -317,6 +347,24 @@ with st.sidebar:
     )
     ## 프롬프트 옵션 선택 end
     task_input = st.text_input("Task 입력", "")
+    
+    ## 파라미터 설정 start
+    ### BM25Retriever 선택
+    st.session_state["selBM25Retriever"] = st.selectbox(
+        "BM25Retriever 선택",
+        ["BM25Retriever", "KiwiBM25Retriever"],
+        index=0
+    )
+    
+    ### BM25Retriever 파라미터 K
+    st.session_state["bm25_k"] = st.number_input(
+        "BM25Retriever K 값 설정",
+        min_value=1,
+        max_value=100,
+        value=5,
+        step=1
+    )
+    ## 파라미터 설정 end
 
 # 파일이 업로드 되었을 때
 # 파일을 캐시 저장(시간이 오래걸리는 작업을 처리할 예정)
@@ -356,7 +404,7 @@ def print_messages():
 # 처음 한번만 수행되게
 
 if clear_btn : 
-    # ALL CLEAR!
+    # 대화 내용만 초기화 한다.
     st.session_state["message"] = []
     st.session_state["store"] = {}
     st.session_state["RAG_WITH_HISTORY"] = []
