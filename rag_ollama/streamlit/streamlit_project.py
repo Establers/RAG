@@ -21,6 +21,10 @@ from langchain_text_splitters import MarkdownTextSplitter
 from langchain_teddynote.prompts import load_prompt
 from langchain import hub
 from langchain_huggingface import HuggingFacePipeline  # for huggingface local model
+
+# 앙상블리트리버
+from langchain.retrievers import BM25Retriever, EnsembleRetriever
+
 import glob
 import os
 st.title("PDF 문서 QA")
@@ -115,10 +119,21 @@ def get_retriever_for_file_upload(upload_file_path=None):
         
     print("end of vectorstore...")
     
-    # 단계 5: 검색기(Retriever) 생성
-    retriever = vectorstore.as_retriever()
-    print("end of retriever...")
-    return retriever
+    # 단계 5 : 검색기(Retriever) 생성
+    # BM25Retriever
+    bm25_retriever = BM25Retriever.from_documents(documents=split_documents)
+    bm25_retriever.k = 5
+    
+    # faissRetriever
+    faiss_retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+    
+    # EnsembleRetriever
+    ensemble_retriever = EnsembleRetriever(
+        retrievers=[bm25_retriever, faiss_retriever],
+        weights=[0.7, 0.3],
+    )
+
+    return ensemble_retriever
 
 def get_llm():
     # llm = ChatOllama(
