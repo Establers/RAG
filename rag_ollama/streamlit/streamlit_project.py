@@ -25,6 +25,9 @@ from langchain_huggingface import HuggingFacePipeline  # for huggingface local m
 # 앙상블리트리버
 from langchain.retrievers import BM25Retriever, EnsembleRetriever
 
+# CHROMA
+from langchain_chroma import Chroma
+
 import glob
 import os
 st.title("PDF 문서 QA")
@@ -96,6 +99,8 @@ def get_retriever_for_file_upload(upload_file_path=None):
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=50)
     split_documents = text_splitter.split_documents(docs)
     print(f"분할된 청크의수: {len(split_documents)}")
+    print(f"문서의 페이지수: {len(split_documents)}")
+    print(f"문서의 첫번째 페이지: {split_documents[0]}")
     
     local_model_path = "../embedding_model/multilingual-e5-large-instruct"
 
@@ -109,15 +114,51 @@ def get_retriever_for_file_upload(upload_file_path=None):
     
     # 단계 4: DB 생성(Create DB) 및 저장
     # 벡터스토어를 생성합니다.
-    vectorstore_index = os.path.basename(upload_file_path).replace(".pdf", "_vectorstore_index").replace(" ", "_")
+    vectorstore_index = os.path.basename(upload_file_path).replace(".pdf", "-db").replace(" ", "_")
     if not os.path.exists(vectorstore_index) :    
-        vectorstore = FAISS.from_documents(documents=split_documents, embedding=embeddings)
-        vectorstore.save_local(vectorstore_index)
+        vectorstore = FAISS.from_documents(
+            documents = split_documents,
+            embedding = embeddings
+        )
+        vectorstore.save_local(
+            folder_path = os.path.join("./cache/embeddings", vectorstore_index),
+            index_name = vectorstore_index,
+        )
     else :
-        vectorstore = FAISS.load_local(vectorstore_index, embeddings,
-                                allow_dangerous_deserialization=True)
-        
-    print("end of vectorstore...")
+        vectorstore = FAISS.load_local(
+            folder_path = os.path.join("./cache/embeddings", vectorstore_index),
+            index_name = vectorstore_index,
+            embeddings = embeddings,                # 문서를 저장할 때 썼던 임베딩을 사용해야함
+            allow_dangerous_deserialization = True, # 
+        )
+    
+    # Chroma - s
+    # 벡터 저장소 생성할 때는 대부분 from_documents를 사용
+    
+    # 1. DB 생성
+    # 1-1 Embedding을 넣을 때, 리트리버와 동일한 임베딩을 써야함
+        # Collection_name : 저장소의 이름, 문서마다 각자 사용하기 위해 파일의 이름으로 DB이름을 지정
+        # FAISS가 더 나을 듯 ㅎㅎ..
+    # collection_name_by_filename = os.path.basename(upload_file_path).replace(".pdf", "_collection").replace(" ", "_")
+    # persist_directory = "./cache/embeddings"
+    # collection_path = os.path.join(persist_directory, collection_name_by_filename)
+    
+    # if not os.path.exists(collection_path) :
+    #     Chroma_db = Chroma.from_documents(
+    #         documents=split_documents,
+    #         embedding=embeddings,
+    #         collection_name=collection_name_by_filename,    # 폴더의 개념, 안하면 임시로 생성
+    #         persist_directory=persist_directory, # 임베딩을 저장할 디렉토리
+    #     )
+    # else :
+    #     # 이미 같은 폴더명이 존재할 경우, 로드를 한다.
+    #     Chroma_db = Chroma(
+    #         persist_directory=persist_directory,
+    #         collection_name=collection_name_by_filename,    # 해당 콜렉션을 가져온다.
+    #         embedding=embeddings,
+    #     )
+    # # Chroma - e
+    
     
     # 단계 5 : 검색기(Retriever) 생성
     # BM25Retriever
@@ -125,7 +166,10 @@ def get_retriever_for_file_upload(upload_file_path=None):
     bm25_retriever.k = 5
     
     # faissRetriever
-    faiss_retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
+    faiss_retriever = vectorstore.as_retriever(
+        search_type = "mmr",    # 검색 방법 (mmr, bm25)
+        search_kwargs={"k": 10, "lambda_mult": 0.5, "fetch_k": 20}, 
+    )
     
     # EnsembleRetriever
     ensemble_retriever = EnsembleRetriever(
